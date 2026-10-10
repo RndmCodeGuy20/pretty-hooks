@@ -48,7 +48,23 @@ Rules:
 - Steps run in sequence. The run stops at the first failure.
 - `only_if_changed` limits a step to commits that change matching files.
   It applies to `pre-commit` only.
+- `{staged_files}` expands to the quoted staged file list.
 - Output uses color on a terminal. Output is plain text in pipes and CI systems.
+
+## Repair Failures
+
+A step can declare a `fix` command:
+
+```yaml
+- name: gofmt
+  run: test -z "$(gofmt -l .)" || exit 1
+  fix: gofmt -w {staged_files}
+  only_if_changed: ["*.go"]
+```
+
+Run with `--fix` (or `PH_FIX=1`). On failure, the tool runs the fix
+command, re-stages the repaired files, and runs the step one more time.
+The tool never unstages files.
 
 ## Commands
 

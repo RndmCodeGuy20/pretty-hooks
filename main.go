@@ -56,11 +56,13 @@ func usage(out *os.File) {
 
 commands:
   init [--preset go|node|minimal] [--force]   scaffold config + install git shims
-  run <hook> [--config PATH] [--skip NAME]... execute a hook's steps (fail-fast)
+  run <hook> [--config PATH] [--skip NAME]... [--fix]
+                                              execute a hook's steps (fail-fast)
   version                                     print version
 
 env:
   HOOKS_OFF=1   skip execution (emergency kill-switch)
+  PH_FIX=1      same as --fix (repair, re-stage, re-run once)
   NO_COLOR=1    force plain output
 `, toolName)
 }
@@ -89,6 +91,7 @@ func cmdRun(args []string, out *os.File) int {
 	// before or after the hook name: 'run pre-push --skip lint'.
 	var skips []string
 	cfgPath := ""
+	fixFlag := false
 	var positional []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -103,8 +106,10 @@ func cmdRun(args []string, out *os.File) int {
 			cfgPath = args[i]
 		case strings.HasPrefix(a, "--config="):
 			cfgPath = strings.TrimPrefix(a, "--config=")
+		case a == "--fix":
+			fixFlag = true
 		case a == "--help" || a == "-h":
-			fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]...")
+			fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix]")
 			return 0
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintf(out, "unknown flag %q\n", a)
@@ -114,7 +119,7 @@ func cmdRun(args []string, out *os.File) int {
 		}
 	}
 	if len(positional) != 1 {
-		fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]...")
+		fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix]")
 		return 2
 	}
 	hook := positional[0]
@@ -171,6 +176,7 @@ func cmdRun(args []string, out *os.File) int {
 		Skip:          skip,
 		Staged:        staged,
 		FilterChanged: filterChanged,
+		Fix:           fixFlag || os.Getenv("PH_FIX") == "1",
 		RootDir:       root,
 	})
 	r.Summary(results)

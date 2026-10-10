@@ -8,15 +8,19 @@ const GoPresetYAML = `# pretty-hooks config - scaffolded by 'pretty-hooks init -
 # Step keys:
 #   name:            shown in output (must be unique per hook)
 #   run:             shell command (runs via 'sh -c')
+#   fix:             optional repair command, runs once on failure with --fix
 #   workdir:         optional, relative to repo root (default: repo root)
 #   env:             optional extra environment variables
 #   only_if_changed: optional globs matched against staged files (pre-commit only)
+#
+# {staged_files} expands to the quoted staged file list in run and fix.
 
 hooks:
   pre-commit:
     steps:
       - name: gofmt
         run: test -z "$(gofmt -l .)" || (echo "unformatted files:"; gofmt -l .; exit 1)
+        fix: gofmt -w {staged_files}
         only_if_changed: ["*.go"]
       - name: vet
         run: go vet ./...
