@@ -2,7 +2,7 @@ package config
 
 // GoPresetYAML is a commented starter config for Go repositories.
 // init writes it verbatim; the repo owns it afterwards.
-const GoPresetYAML = `# pretty-hooks config — scaffolded by 'pretty-hooks init --preset go'.
+const GoPresetYAML = `# pretty-hooks config - scaffolded by 'pretty-hooks init --preset go'.
 # Docs: https://github.com/RndmCodeGuy20/pretty-hooks
 #
 # Step keys:
@@ -35,7 +35,7 @@ hooks:
 `
 
 // NodePresetYAML is a commented starter config for Node.js repositories.
-const NodePresetYAML = `# pretty-hooks config — scaffolded by 'pretty-hooks init --preset node'.
+const NodePresetYAML = `# pretty-hooks config - scaffolded by 'pretty-hooks init --preset node'.
 # Docs: https://github.com/RndmCodeGuy20/pretty-hooks
 
 hooks:

@@ -104,12 +104,12 @@ func (r *Renderer) StepOK(name string, d time.Duration) {
 
 // StepFail closes a failing step.
 func (r *Renderer) StepFail(name, reason string, d time.Duration) {
-	r.println(r.fail.Render(fmt.Sprintf("✗ %s — %s (%s)", name, reason, d.Round(100*time.Millisecond))))
+	r.println(r.fail.Render(fmt.Sprintf("✗ %s - %s (%s)", name, reason, d.Round(100*time.Millisecond))))
 }
 
 // StepSkipped notes a skipped step.
 func (r *Renderer) StepSkipped(name, reason string) {
-	r.println(r.skip.Render(fmt.Sprintf("⊘ %s — skipped (%s)", name, reason)))
+	r.println(r.skip.Render(fmt.Sprintf("⊘ %s - skipped (%s)", name, reason)))
 }
 
 // Summary prints the final board, including failure tails.
