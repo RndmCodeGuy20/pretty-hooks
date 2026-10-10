@@ -16,6 +16,7 @@ import (
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/cache"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/config"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/render"
+	"github.com/RndmCodeGuy20/pretty-hooks/internal/stats"
 )
 
 // tailLines caps how much of a failed step's output the summary replays.
@@ -160,9 +161,11 @@ func runOne(s config.Step, i, total int, opts Options, r *render.Renderer, emit 
 			reason = err.Error()
 		}
 		r.StepFail(s.Name, reason, dur)
+		stats.Append(opts.RootDir, opts.Hook, s.Name, dur, "fail")
 		return render.Result{Name: s.Name, Status: render.Fail, Duration: dur, Reason: reason, Tail: tail}, &FailedError{Step: s.Name, Code: code}
 	}
 	r.StepOK(s.Name, dur)
+	stats.Append(opts.RootDir, opts.Hook, s.Name, dur, "pass")
 	if cacheable && !opts.NoCache {
 		if err := cache.Store(opts.RootDir, opts.Hook, s.Name, key); err != nil {
 			r.Warn(fmt.Sprintf("cache store failed for %q: %v", s.Name, err))

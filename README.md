@@ -127,6 +127,8 @@ annotations. Force the mode with `--ci`:
 - `pretty-hooks run pre-push --skip test` skips a step.
 - `pretty-hooks doctor` checks the setup: installed shims, required
   binaries, and linter version parity with CI workflows.
+- `pretty-hooks stats` shows step timing history: runs, averages, failures.
+  History lives under `.git` and never gets committed.
 - `HOOKS_OFF=1` skips all hooks. Use it only when the tool blocks urgent work.
 - `git push --no-verify` bypasses the hooks.
 

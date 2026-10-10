@@ -18,6 +18,7 @@ import (
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/initcmd"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/render"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/runner"
+	"github.com/RndmCodeGuy20/pretty-hooks/internal/stats"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -41,6 +42,8 @@ func dispatch(args []string, out *os.File) int {
 		return cmdRun(args[1:], out)
 	case "doctor":
 		return cmdDoctor(args[1:], out)
+	case "stats":
+		return cmdStats(args[1:], out)
 	case "version", "--version", "-v":
 		fmt.Fprintln(out, toolName, version)
 		return 0
@@ -62,6 +65,7 @@ commands:
   run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache] [--ci]
                                               execute a hook's steps (fail-fast)
   doctor [--config PATH]                      check setup (shims, binaries, CI pins)
+  stats [--hook NAME]                         show step timing history
   version                                     print version
 
 env:
@@ -88,7 +92,35 @@ func cmdInit(args []string, out *os.File) int {
 	return 0
 }
 
-// repeatable --skip NAME flag.
+// cmdStats prints step timing history.
+func cmdStats(args []string, out *os.File) int {
+	hook := ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--hook" && i+1 < len(args):
+			i++
+			hook = args[i]
+		case strings.HasPrefix(a, "--hook="):
+			hook = strings.TrimPrefix(a, "--hook=")
+		case a == "--help" || a == "-h":
+			fmt.Fprintln(out, "usage: pretty-hooks stats [--hook NAME]")
+			return 0
+		default:
+			fmt.Fprintf(out, "unknown argument %q\n", a)
+			return 2
+		}
+	}
+	root := runner.RepoRoot("")
+	if root == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			root = cwd
+		}
+	}
+	r := render.New(out)
+	r.Info(stats.Format(stats.Aggregate(root, hook)))
+	return 0
+}
 
 func cmdDoctor(args []string, out *os.File) int {
 	cfgPath := ""
