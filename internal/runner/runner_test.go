@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/config"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/render"
@@ -172,6 +173,71 @@ func TestFixSingleRetry(t *testing.T) {
 	}
 	if n := strings.Count(sb.String(), "[1/1] broken"); n != 2 {
 		t.Errorf("step ran %d times, want exactly 2 (try + one retry)", n)
+	}
+}
+
+func TestGroupRunsConcurrently(t *testing.T) {
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{
+		{Name: "a", Run: "sleep 1", Group: "g"},
+		{Name: "b", Run: "sleep 1", Group: "g"},
+	}
+	start := time.Now()
+	results, err := Run(steps, r, &sb, Options{RootDir: t.TempDir()})
+	dur := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("got %d results", len(results))
+	}
+	if results[0].Name != "a" || results[1].Name != "b" {
+		t.Errorf("result order not preserved: %+v", results)
+	}
+	if dur >= 1900*time.Millisecond {
+		t.Errorf("steps ran sequentially, took %v", dur)
+	}
+}
+
+func TestGroupCollectsAllFailures(t *testing.T) {
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{
+		{Name: "bad1", Run: "exit 1", Group: "g"},
+		{Name: "bad2", Run: "exit 2", Group: "g"},
+		{Name: "never", Run: "exit 0"},
+	}
+	results, err := Run(steps, r, &sb, Options{RootDir: t.TempDir()})
+	if err == nil {
+		t.Fatal("expected failure")
+	}
+	if len(results) != 2 {
+		t.Fatalf("both group members must run, got %d results", len(results))
+	}
+	for _, res := range results {
+		if res.Status != render.Fail {
+			t.Errorf("step %q should fail", res.Name)
+		}
+	}
+}
+
+func TestGroupLabelsOutput(t *testing.T) {
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{
+		{Name: "a", Run: "echo hello", Group: "g"},
+		{Name: "solo", Run: "echo plain"},
+	}
+	if _, err := Run(steps, r, &sb, Options{RootDir: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	out := sb.String()
+	if !strings.Contains(out, "a | hello") {
+		t.Errorf("grouped output missing label:\n%s", out)
+	}
+	if strings.Contains(out, "solo | plain") {
+		t.Errorf("ungrouped output must not be labeled:\n%s", out)
 	}
 }
 

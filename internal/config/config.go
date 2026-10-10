@@ -23,6 +23,9 @@ type Step struct {
 	// Fix repairs failure causes (formatters with --write). Runs once on
 	// failure when --fix is passed, then the step runs one final time.
 	Fix string `yaml:"fix,omitempty"`
+	// Group runs this step concurrently with adjacent steps sharing the
+	// name. Empty means sequential. Groups run in order, fail-fast.
+	Group string `yaml:"group,omitempty"`
 	// Workdir is resolved relative to the repository root. Empty means repo root.
 	Workdir string `yaml:"workdir,omitempty"`
 	// Env adds (or overrides) environment variables for this step.

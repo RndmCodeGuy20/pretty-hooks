@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/config"
@@ -69,37 +70,88 @@ func run(steps []config.Step, r *render.Renderer, out io.Writer, opts Options) (
 		}
 	}
 	results = make([]render.Result, 0, len(steps))
-	for i, s := range steps {
-		if opts.Skip[s.Name] {
-			r.StepSkipped(s.Name, "--skip")
-			results = append(results, render.Result{Name: s.Name, Status: render.Skipped, Reason: "--skip"})
-			continue
-		}
-		if len(s.OnlyIfChanged) > 0 && opts.FilterChanged && !matchAny(s.OnlyIfChanged, opts.Staged) {
-			r.StepSkipped(s.Name, "no matching changed files")
-			results = append(results, render.Result{Name: s.Name, Status: render.Skipped, Reason: "no matching changed files"})
-			continue
-		}
-		r.StepBegin(i+1, len(steps), s.Name, s.Run)
-		start := time.Now()
-		tail, code, err := execStep(s, opts.RootDir, opts.Staged, func(line string) { r.StepLine(line) })
-		dur := time.Since(start)
-		if err != nil && opts.Fix && s.Fix != "" {
-			tail, code, dur, err = attemptFix(s, i, len(steps), opts, r)
-		}
-		if err != nil {
-			reason := fmt.Sprintf("exit %d", code)
-			if code < 0 {
-				reason = err.Error()
+	for i := 0; i < len(steps); {
+		j := i + 1
+		// Only named groups merge; empty groups always run sequentially.
+		name := ""
+		if steps[i].Group != "" {
+			name = steps[i].Group
+			for j < len(steps) && steps[j].Group == name {
+				j++
 			}
-			r.StepFail(s.Name, reason, dur)
-			results = append(results, render.Result{Name: s.Name, Status: render.Fail, Duration: dur, Reason: reason, Tail: tail})
-			return results, &FailedError{Step: s.Name, Code: code}
 		}
-		r.StepOK(s.Name, dur)
-		results = append(results, render.Result{Name: s.Name, Status: render.Pass, Duration: dur})
+		gres, gerr := runGroup(steps[i:j], name, i, len(steps), opts, r)
+		results = append(results, gres...)
+		if gerr != nil {
+			return results, gerr
+		}
+		i = j
 	}
 	return results, nil
+}
+
+// runGroup runs one step directly or a named group concurrently.
+// Members of a group all run (failures collected); any failure stops
+// later groups via the returned error.
+func runGroup(group []config.Step, name string, offset, total int, opts Options, r *render.Renderer) ([]render.Result, error) {
+	if name == "" {
+		res, err := runOne(group[0], offset, total, opts, r, func(line string) { r.StepLine(line) })
+		return []render.Result{res}, err
+	}
+	type outcome struct {
+		res render.Result
+		err error
+	}
+	outcomes := make([]outcome, len(group))
+	var wg sync.WaitGroup
+	for k, s := range group {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			emit := func(line string) { r.StepLine(s.Name + " | " + line) }
+			res, err := runOne(s, offset+k, total, opts, r, emit)
+			outcomes[k] = outcome{res, err}
+		}()
+	}
+	wg.Wait()
+	results := make([]render.Result, 0, len(group))
+	var firstErr error
+	for _, o := range outcomes {
+		results = append(results, o.res)
+		if o.err != nil && firstErr == nil {
+			firstErr = o.err
+		}
+	}
+	return results, firstErr
+}
+
+// runOne executes a single step (skip, filter, exec, fix) and reports it.
+func runOne(s config.Step, i, total int, opts Options, r *render.Renderer, emit func(string)) (render.Result, error) {
+	if opts.Skip[s.Name] {
+		r.StepSkipped(s.Name, "--skip")
+		return render.Result{Name: s.Name, Status: render.Skipped, Reason: "--skip"}, nil
+	}
+	if len(s.OnlyIfChanged) > 0 && opts.FilterChanged && !matchAny(s.OnlyIfChanged, opts.Staged) {
+		r.StepSkipped(s.Name, "no matching changed files")
+		return render.Result{Name: s.Name, Status: render.Skipped, Reason: "no matching changed files"}, nil
+	}
+	r.StepBegin(i+1, total, s.Name, s.Run)
+	start := time.Now()
+	tail, code, err := execStep(s, opts.RootDir, opts.Staged, emit)
+	dur := time.Since(start)
+	if err != nil && opts.Fix && s.Fix != "" {
+		tail, code, dur, err = attemptFix(s, i, total, opts, r, emit)
+	}
+	if err != nil {
+		reason := fmt.Sprintf("exit %d", code)
+		if code < 0 {
+			reason = err.Error()
+		}
+		r.StepFail(s.Name, reason, dur)
+		return render.Result{Name: s.Name, Status: render.Fail, Duration: dur, Reason: reason, Tail: tail}, &FailedError{Step: s.Name, Code: code}
+	}
+	r.StepOK(s.Name, dur)
+	return render.Result{Name: s.Name, Status: render.Pass, Duration: dur}, nil
 }
 
 // execStep runs one step via 'sh -c', streaming each output line to emit and
@@ -137,8 +189,7 @@ func execStep(s config.Step, root string, staged []string, emit func(string)) ([
 
 // attemptFix runs the step's fix command, re-stages repaired files, and runs
 // the step exactly once more. It returns the final attempt's outcome.
-func attemptFix(s config.Step, i, total int, opts Options, r *render.Renderer) ([]string, int, time.Duration, error) {
-	emit := func(line string) { r.StepLine(line) }
+func attemptFix(s config.Step, i, total int, opts Options, r *render.Renderer, emit func(string)) ([]string, int, time.Duration, error) {
 	r.Info(fmt.Sprintf("fix: %s", s.Fix))
 	fixStep := config.Step{Name: s.Name + " fix", Run: s.Fix, Workdir: s.Workdir, Env: s.Env}
 	_, _, _ = execStep(fixStep, opts.RootDir, opts.Staged, emit)
