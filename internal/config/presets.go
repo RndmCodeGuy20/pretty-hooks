@@ -19,7 +19,7 @@ hooks:
   pre-commit:
     steps:
       - name: gofmt
-        run: test -z "$(gofmt -l .)" || (echo "unformatted files:"; gofmt -l .; exit 1)
+        run: test -z "$(gofmt -l {staged_files})" || (echo "unformatted staged files:"; gofmt -l {staged_files}; exit 1)
         fix: gofmt -w {staged_files}
         only_if_changed: ["*.go"]
       - name: vet
