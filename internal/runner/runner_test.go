@@ -83,6 +83,30 @@ func TestRunSkipAndFilter(t *testing.T) {
 	}
 }
 
+func TestExpandPlaceholders(t *testing.T) {
+	s := config.Step{Name: "x", Run: "gofmt -l {staged_files}", OnlyIfChanged: []string{"*.go"}}
+	got := expandPlaceholders(s.Run, s, []string{"a.go", "docs/b.md", "o'Brien.go"})
+	want := "gofmt -l 'a.go' 'o'\\''Brien.go'"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestExpandPlaceholdersNoFilter(t *testing.T) {
+	s := config.Step{Name: "x", Run: "echo {staged_files}"}
+	got := expandPlaceholders(s.Run, s, []string{"a.go", "b.md"})
+	if got != "echo 'a.go' 'b.md'" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestExpandPlaceholdersAbsent(t *testing.T) {
+	s := config.Step{Name: "x", Run: "go vet ./..."}
+	if got := expandPlaceholders(s.Run, s, []string{"a.go"}); got != s.Run {
+		t.Errorf("got %q, want unchanged", got)
+	}
+}
+
 func TestOnlyIfChangedEmptyStagedSkips(t *testing.T) {
 	var sb strings.Builder
 	r := render.New(&sb)

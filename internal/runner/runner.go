@@ -59,7 +59,7 @@ func Run(steps []config.Step, r *render.Renderer, out io.Writer, opts Options) (
 		}
 		r.StepBegin(i+1, len(steps), s.Name, s.Run)
 		start := time.Now()
-		tail, code, err := execStep(s, opts.RootDir, func(line string) { r.StepLine(line) })
+		tail, code, err := execStep(s, opts.RootDir, opts.Staged, func(line string) { r.StepLine(line) })
 		dur := time.Since(start)
 		if err != nil {
 			reason := fmt.Sprintf("exit %d", code)
@@ -75,8 +75,8 @@ func Run(steps []config.Step, r *render.Renderer, out io.Writer, opts Options) (
 
 // execStep runs one step via 'sh -c', streaming each output line to emit and
 // keeping the last tailLines lines for failure summaries.
-func execStep(s config.Step, root string, emit func(string)) ([]string, int, error) {
-	cmd := exec.Command("sh", "-c", s.Run)
+func execStep(s config.Step, root string, staged []string, emit func(string)) ([]string, int, error) {
+	cmd := exec.Command("sh", "-c", expandPlaceholders(s.Run, s, staged))
 	dir := root
 	if s.Workdir != "" {
 		dir = s.Workdir
@@ -104,6 +104,26 @@ func execStep(s config.Step, root string, emit func(string)) ([]string, int, err
 		return stream.tail(), -1, err
 	}
 	return nil, 0, nil
+}
+
+// expandPlaceholders replaces {staged_files} with the shell-quoted file list:
+// staged files filtered by OnlyIfChanged when set, else all staged files.
+func expandPlaceholders(cmd string, s config.Step, staged []string) string {
+	if !strings.Contains(cmd, "{staged_files}") {
+		return cmd
+	}
+	var kept []string
+	for _, f := range staged {
+		if len(s.OnlyIfChanged) == 0 || matchAny(s.OnlyIfChanged, []string{f}) {
+			kept = append(kept, shellQuote(f))
+		}
+	}
+	return strings.ReplaceAll(cmd, "{staged_files}", strings.Join(kept, " "))
+}
+
+// shellQuote wraps s in single quotes for sh.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 // matchAny reports whether any glob matches any file. Each pattern is tried
