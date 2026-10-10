@@ -9,17 +9,17 @@ builds:
     binary: pretty-hooks
     goos: [linux, darwin]
     goarch: [amd64, arm64]
-    ldflags: [-s -w -X main.version={{.Version}}]
+    ldflags: [-s, -w, "-X main.version={{.Version}}"]
   - id: ph
     main: .
     binary: ph
     goos: [linux, darwin]
     goarch: [amd64, arm64]
-    ldflags: [-s -w -X main.version={{.Version}}]
+    ldflags: [-s, -w, "-X main.version={{.Version}}"]
 
 archives:
   - id: default
-    builds: [pretty-hooks, ph]
+    ids: [pretty-hooks, ph]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
