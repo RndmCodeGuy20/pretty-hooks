@@ -61,6 +61,11 @@ func Execute(workDir, preset string, force bool, r *render.Renderer) error {
 				continue
 			}
 		}
+		// Remove first: p may be a symlink, and writing through it
+		// would clobber the link target instead of replacing the hook.
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 		if err := os.WriteFile(p, []byte(shim(hook)), 0o755); err != nil {
 			return err
 		}
