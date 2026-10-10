@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sync"
 	"time"
 
@@ -39,7 +40,10 @@ type Result struct {
 type Renderer struct {
 	mu    sync.Mutex
 	out   io.Writer
+	lr    *lipgloss.Renderer
 	color bool
+	ci    bool
+	buf   []string
 
 	header lipgloss.Style
 	step   lipgloss.Style
@@ -66,17 +70,29 @@ func New(out io.Writer) *Renderer {
 		lr = lipgloss.NewRenderer(out)
 		lr.SetColorProfile(termenv.Ascii)
 	}
-	return &Renderer{
-		out:    out,
-		color:  color,
-		header: lr.NewStyle().Bold(true),
-		step:   lr.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
-		dim:    lr.NewStyle().Foreground(lipgloss.Color("8")),
-		ok:     lr.NewStyle().Foreground(lipgloss.Color("2")).Bold(true),
-		fail:   lr.NewStyle().Foreground(lipgloss.Color("1")).Bold(true),
-		skip:   lr.NewStyle().Foreground(lipgloss.Color("3")).Bold(true),
-		bold:   lr.NewStyle().Bold(true),
-	}
+	r := &Renderer{out: out, lr: lr, color: color}
+	r.restyle()
+	return r
+}
+
+// restyle rebuilds every style from the current renderer profile.
+func (r *Renderer) restyle() {
+	r.header = r.lr.NewStyle().Bold(true)
+	r.step = r.lr.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
+	r.dim = r.lr.NewStyle().Foreground(lipgloss.Color("8"))
+	r.ok = r.lr.NewStyle().Foreground(lipgloss.Color("2")).Bold(true)
+	r.fail = r.lr.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
+	r.skip = r.lr.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
+	r.bold = r.lr.NewStyle().Bold(true)
+}
+
+// EnableCI switches to CI log mode: plain output, collapsible groups,
+// and file annotations for failing steps.
+func (r *Renderer) EnableCI() {
+	r.ci = true
+	r.color = false
+	r.lr.SetColorProfile(termenv.Ascii)
+	r.restyle()
 }
 
 // Colored reports whether styled output is active (useful for tests).
@@ -88,6 +104,12 @@ func (r *Renderer) println(s string) {
 	fmt.Fprintln(r.out, s)
 }
 
+// ciBufferCap bounds the per-step scan buffer for annotations.
+const ciBufferCap = 200
+
+// fileLine matches "path/file.ext:LINE: message" for annotation emission.
+var fileLine = regexp.MustCompile(`^([^:\s]+\.(go|js|ts|tsx|jsx|py|rb|java|tf)):(\d+):?\d*:?\s*(.*)$`)
+
 // Header opens a hook run.
 func (r *Renderer) Header(tool, hook string, n int) {
 	r.println(r.header.Render(fmt.Sprintf("%s · %s (%d steps)", tool, hook, n)))
@@ -95,25 +117,47 @@ func (r *Renderer) Header(tool, hook string, n int) {
 
 // StepBegin announces a step.
 func (r *Renderer) StepBegin(i, total int, name, cmd string) {
+	if r.ci {
+		r.buf = nil
+		r.println(fmt.Sprintf("::group::%s - %s", name, cmd))
+		return
+	}
 	r.println(r.step.Render(fmt.Sprintf("› [%d/%d] %s", i, total, name)) + r.dim.Render(fmt.Sprintf("  $ %s", cmd)))
 }
 
 // StepLine streams one captured output line, dimmed and indented.
 func (r *Renderer) StepLine(line string) {
 	r.println(r.dim.Render("    " + line))
+	if r.ci && len(r.buf) < ciBufferCap {
+		r.buf = append(r.buf, line)
+	}
 }
 
 // StepOK closes a passing step.
 func (r *Renderer) StepOK(name string, d time.Duration) {
+	if r.ci {
+		r.buf = nil
+		r.println("::endgroup::")
+	}
 	r.println(r.ok.Render(fmt.Sprintf("✓ %s (%s)", name, d.Round(100*time.Millisecond))))
 }
 
 // StepFail closes a failing step.
 func (r *Renderer) StepFail(name, reason string, d time.Duration) {
+	if r.ci {
+		for _, line := range r.buf {
+			if m := fileLine.FindStringSubmatch(line); m != nil {
+				r.println(fmt.Sprintf("::error file=%s,line=%s::%s", m[1], m[3], m[4]))
+			}
+		}
+		r.buf = nil
+		r.println("::endgroup::")
+	}
 	r.println(r.fail.Render(fmt.Sprintf("✗ %s - %s (%s)", name, reason, d.Round(100*time.Millisecond))))
 }
 
-// StepSkipped notes a skipped step.
+// StepSkipped notes a skipped step. Skips never open a group, so there is
+// nothing to close in CI mode.
 func (r *Renderer) StepSkipped(name, reason string) {
 	r.println(r.skip.Render(fmt.Sprintf("⊘ %s - skipped (%s)", name, reason)))
 }

@@ -49,3 +49,50 @@ func TestConcurrentWritesKeepWholeLines(t *testing.T) {
 		}
 	}
 }
+
+func TestCIEmitsGroups(t *testing.T) {
+	var sb strings.Builder
+	r := New(&sb)
+	r.EnableCI()
+	r.StepBegin(1, 1, "vet", "go vet ./...")
+	r.StepLine("all good")
+	r.StepOK("vet", time.Second)
+	out := sb.String()
+	for _, want := range []string{"::group::vet", "::endgroup::"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "\x1b[") {
+		t.Errorf("CI output must be plain:\n%q", out)
+	}
+}
+
+func TestCIAnnotatesFileLinesOnFailure(t *testing.T) {
+	var sb strings.Builder
+	r := New(&sb)
+	r.EnableCI()
+	r.StepBegin(1, 1, "vet", "go vet ./...")
+	r.StepLine("pkg/a.go:12: something broke")
+	r.StepLine("unrelated noise")
+	r.StepFail("vet", "exit 1", time.Second)
+	out := sb.String()
+	if !strings.Contains(out, "::error file=pkg/a.go,line=12::something broke") {
+		t.Errorf("missing annotation in:\n%s", out)
+	}
+	if strings.Contains(out, "::error file=unrelated") {
+		t.Errorf("non-matching line was annotated:\n%s", out)
+	}
+}
+
+func TestCINoAnnotationsOnPass(t *testing.T) {
+	var sb strings.Builder
+	r := New(&sb)
+	r.EnableCI()
+	r.StepBegin(1, 1, "vet", "go vet ./...")
+	r.StepLine("pkg/a.go:12: note")
+	r.StepOK("vet", time.Second)
+	if out := sb.String(); strings.Contains(out, "::error") {
+		t.Errorf("passing step must not annotate:\n%s", out)
+	}
+}
