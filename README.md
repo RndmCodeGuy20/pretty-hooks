@@ -66,6 +66,22 @@ Run with `--fix` (or `PH_FIX=1`). On failure, the tool runs the fix
 command, re-stages the repaired files, and runs the step one more time.
 The tool never unstages files.
 
+## Test Staged Content Only
+
+Unstaged edits change what steps test. Set `stash` on `pre-commit`:
+
+```yaml
+hooks:
+  pre-commit:
+    stash: true
+    steps:
+      - name: test
+        run: go test ./...
+```
+
+The tool hides unstaged changes while steps run, then restores them.
+It restores them also when a step fails. Untracked files stay in place.
+
 ## Commands
 
 - `pretty-hooks run pre-push` runs the steps for a hook.

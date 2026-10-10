@@ -150,6 +150,7 @@ func cmdRun(args []string, out *os.File) int {
 		r.Error(err.Error())
 		return 1
 	}
+	stash := hook == "pre-commit" && cfg.Hooks[hook].Stash
 
 	root := runner.RepoRoot("")
 	if root == "" {
@@ -177,10 +178,12 @@ func cmdRun(args []string, out *os.File) int {
 		Staged:        staged,
 		FilterChanged: filterChanged,
 		Fix:           fixFlag || os.Getenv("PH_FIX") == "1",
+		Stash:         stash,
 		RootDir:       root,
 	})
 	r.Summary(results)
 	if runErr != nil {
+		r.Error(runErr.Error())
 		return 1
 	}
 	return 0

@@ -37,6 +37,9 @@ type Step struct {
 // Hook is the ordered step list for one git hook.
 type Hook struct {
 	Steps []Step `yaml:"steps"`
+	// Stash hides unstaged changes while steps run (pre-commit).
+	// Untracked files are left alone.
+	Stash bool `yaml:"stash,omitempty"`
 }
 
 // File is the root of the YAML config.

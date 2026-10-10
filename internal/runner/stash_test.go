@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/RndmCodeGuy20/pretty-hooks/internal/config"
+	"github.com/RndmCodeGuy20/pretty-hooks/internal/render"
 )
 
 func scratchRepo(t *testing.T) string {
@@ -79,6 +82,25 @@ func TestStashSkipsCleanTree(t *testing.T) {
 	}
 	if did {
 		t.Error("clean tree must not stash")
+	}
+}
+
+func TestStashRestoresOnStepFailure(t *testing.T) {
+	root := scratchRepo(t)
+	worktree(t, root, "staged\n")
+	if out, err := exec.Command("git", "-C", root, "add", "f.txt").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v %s", err, out)
+	}
+	worktree(t, root, "staged plus unstaged\n")
+
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{{Name: "boom", Run: "exit 1"}}
+	if _, err := Run(steps, r, &sb, Options{RootDir: root, Stash: true}); err == nil {
+		t.Fatal("expected step failure")
+	}
+	if data, _ := os.ReadFile(filepath.Join(root, "f.txt")); string(data) != "staged plus unstaged\n" {
+		t.Errorf("unstaged change lost after failure, got %q", data)
 	}
 }
 

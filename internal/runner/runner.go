@@ -31,6 +31,9 @@ type Options struct {
 	// Fix runs each failing step's fix command once, re-stages repaired
 	// files, and runs the step one final time.
 	Fix bool
+	// Stash hides unstaged changes while steps run. The stash is restored
+	// on every exit path; a failed restore overrides the run error.
+	Stash bool
 	// RootDir is the working directory default (repo root). Empty means cwd.
 	RootDir string
 }
@@ -48,7 +51,24 @@ func (e *FailedError) Error() string {
 // Run executes steps in order, streaming progress to r.
 // It stops at the first failure and returns the results plus a *FailedError.
 func Run(steps []config.Step, r *render.Renderer, out io.Writer, opts Options) ([]render.Result, error) {
-	results := make([]render.Result, 0, len(steps))
+	return run(steps, r, out, opts)
+}
+
+func run(steps []config.Step, r *render.Renderer, out io.Writer, opts Options) (results []render.Result, runErr error) {
+	if opts.Stash {
+		stashed, err := stashPushIfDirty(opts.RootDir)
+		if err != nil {
+			return nil, err
+		}
+		if stashed {
+			defer func() {
+				if perr := stashPop(opts.RootDir); perr != nil {
+					runErr = perr
+				}
+			}()
+		}
+	}
+	results = make([]render.Result, 0, len(steps))
 	for i, s := range steps {
 		if opts.Skip[s.Name] {
 			r.StepSkipped(s.Name, "--skip")
