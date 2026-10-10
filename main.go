@@ -19,6 +19,7 @@ import (
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/render"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/runner"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/stats"
+	"github.com/RndmCodeGuy20/pretty-hooks/internal/upgrade"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -44,6 +45,8 @@ func dispatch(args []string, out *os.File) int {
 		return cmdDoctor(args[1:], out)
 	case "stats":
 		return cmdStats(args[1:], out)
+	case "upgrade":
+		return cmdUpgrade(out)
 	case "version", "--version", "-v":
 		fmt.Fprintln(out, toolName, version)
 		return 0
@@ -66,6 +69,7 @@ commands:
                                               execute a hook's steps (fail-fast)
   doctor [--config PATH]                      check setup (shims, binaries, CI pins)
   stats [--hook NAME]                         show step timing history
+  upgrade                                     update to the latest release
   version                                     print version
 
 env:
@@ -119,6 +123,18 @@ func cmdStats(args []string, out *os.File) int {
 	}
 	r := render.New(out)
 	r.Info(stats.Format(stats.Aggregate(root, hook)))
+	return 0
+}
+
+// cmdUpgrade updates the binary to the latest GitHub release.
+func cmdUpgrade(out *os.File) int {
+	r := render.New(out)
+	msg, err := upgrade.Upgrade(version)
+	if err != nil {
+		r.Error(err.Error())
+		return 1
+	}
+	r.Info(msg)
 	return 0
 }
 
@@ -210,7 +226,7 @@ func cmdRun(args []string, out *os.File) int {
 		case a == "--ci":
 			ciFlag = true
 		case a == "--help" || a == "-h":
-			fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache] [--ci]")
+			fmt.Fprintln(out, "usage: pretty-hooks run <hook> [hook-args...] [--config PATH] [--skip NAME]... [--fix] [--no-cache] [--ci]")
 			return 0
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintf(out, "unknown flag %q\n", a)
@@ -219,8 +235,8 @@ func cmdRun(args []string, out *os.File) int {
 			positional = append(positional, a)
 		}
 	}
-	if len(positional) != 1 {
-		fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache] [--ci]")
+	if len(positional) < 1 {
+		fmt.Fprintln(out, "usage: pretty-hooks run <hook> [hook-args...] [--config PATH] [--skip NAME]... [--fix] [--no-cache] [--ci]")
 		return 2
 	}
 	hook := positional[0]
@@ -228,6 +244,12 @@ func cmdRun(args []string, out *os.File) int {
 	if ciFlag || os.Getenv("GITHUB_ACTIONS") == "true" {
 		r.EnableCI()
 	}
+	// Hook arguments (commit-msg file, pre-push remote details) reach steps
+	// as PH_NARGS and PH_ARG_0..N. Shims forward "$@" here.
+	for i, a := range positional[1:] {
+		_ = os.Setenv(fmt.Sprintf("PH_ARG_%d", i), a)
+	}
+	_ = os.Setenv("PH_NARGS", fmt.Sprintf("%d", len(positional)-1))
 
 	if os.Getenv("HOOKS_OFF") == "1" {
 		r.Warn("HOOKS_OFF=1, skipping " + hook)
