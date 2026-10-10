@@ -129,8 +129,15 @@ annotations. Force the mode with `--ci`:
   binaries, and linter version parity with CI workflows.
 - `pretty-hooks stats` shows step timing history: runs, averages, failures.
   History lives under `.git` and never gets committed.
+- `pretty-hooks upgrade` updates the binary to the latest release.
 - `HOOKS_OFF=1` skips all hooks. Use it only when the tool blocks urgent work.
 - `git push --no-verify` bypasses the hooks.
+
+## Presets
+
+`init --preset` accepts `go`, `node`, `hygiene`, or `minimal`.
+The hygiene preset checks commit message format, conflict markers,
+large files, and secrets. The file is yours after scaffolding.
 
 ## License
 
