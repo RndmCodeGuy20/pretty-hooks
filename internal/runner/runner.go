@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RndmCodeGuy20/pretty-hooks/internal/cache"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/config"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/render"
 )
@@ -32,6 +33,10 @@ type Options struct {
 	// Fix runs each failing step's fix command once, re-stages repaired
 	// files, and runs the step one final time.
 	Fix bool
+	// Hook names the running hook. Used for cache storage paths.
+	Hook string
+	// NoCache bypasses cache reads and writes.
+	NoCache bool
 	// Stash hides unstaged changes while steps run. The stash is restored
 	// on every exit path; a failed restore overrides the run error.
 	Stash bool
@@ -135,6 +140,13 @@ func runOne(s config.Step, i, total int, opts Options, r *render.Renderer, emit 
 		r.StepSkipped(s.Name, "no matching changed files")
 		return render.Result{Name: s.Name, Status: render.Skipped, Reason: "no matching changed files"}, nil
 	}
+	key, cacheable := cacheKey(s, opts)
+	if cacheable && !opts.NoCache {
+		if h, ok := cache.Load(opts.RootDir, opts.Hook, s.Name); ok && h == key {
+			r.StepCached(s.Name)
+			return render.Result{Name: s.Name, Status: render.Cached}, nil
+		}
+	}
 	r.StepBegin(i+1, total, s.Name, s.Run)
 	start := time.Now()
 	tail, code, err := execStep(s, opts.RootDir, opts.Staged, emit)
@@ -151,6 +163,11 @@ func runOne(s config.Step, i, total int, opts Options, r *render.Renderer, emit 
 		return render.Result{Name: s.Name, Status: render.Fail, Duration: dur, Reason: reason, Tail: tail}, &FailedError{Step: s.Name, Code: code}
 	}
 	r.StepOK(s.Name, dur)
+	if cacheable && !opts.NoCache {
+		if err := cache.Store(opts.RootDir, opts.Hook, s.Name, key); err != nil {
+			r.Warn(fmt.Sprintf("cache store failed for %q: %v", s.Name, err))
+		}
+	}
 	return render.Result{Name: s.Name, Status: render.Pass, Duration: dur}, nil
 }
 
@@ -223,6 +240,57 @@ func restage(s config.Step, opts Options) error {
 		cmd.Dir = opts.RootDir
 	}
 	return cmd.Run()
+}
+
+// cacheKey computes the cache key for a step, or reports it uncacheable.
+// Patterns come from CacheInputs, else OnlyIfChanged. Steps with neither
+// are uncacheable; the caller warns about cache:true without inputs.
+func cacheKey(s config.Step, opts Options) (string, bool) {
+	if !s.Cache {
+		return "", false
+	}
+	patterns := s.CacheInputs
+	if len(patterns) == 0 {
+		patterns = s.OnlyIfChanged
+	}
+	if len(patterns) == 0 {
+		return "", false
+	}
+	files, ok := inputHashes(opts.RootDir, patterns)
+	if !ok {
+		return "", false
+	}
+	return cache.Key(s.Run, s.Workdir, s.Env, files), true
+}
+
+// inputHashes maps each tracked file matching the patterns to its content
+// hash. Unreadable files or git failures make the step uncacheable.
+func inputHashes(root string, patterns []string) (map[string]string, bool) {
+	cmd := exec.Command("git", "ls-files")
+	if root != "" {
+		cmd.Dir = root
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, false
+	}
+	files := map[string]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.TrimSpace(line)
+		if f == "" || !matchAny(patterns, []string{f}) {
+			continue
+		}
+		p := f
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(root, f)
+		}
+		h, err := cache.HashFile(p)
+		if err != nil {
+			return nil, false
+		}
+		files[filepath.ToSlash(f)] = h
+	}
+	return files, true
 }
 
 // stagedList returns the step's file list: staged files filtered by

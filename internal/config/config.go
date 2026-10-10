@@ -26,6 +26,10 @@ type Step struct {
 	// Group runs this step concurrently with adjacent steps sharing the
 	// name. Empty means sequential. Groups run in order, fail-fast.
 	Group string `yaml:"group,omitempty"`
+	// Cache skips the step when inputs are unchanged since the last pass.
+	// Inputs default to OnlyIfChanged; without either, caching is off.
+	Cache       bool     `yaml:"cache,omitempty"`
+	CacheInputs []string `yaml:"cache_inputs,omitempty"`
 	// Workdir is resolved relative to the repository root. Empty means repo root.
 	Workdir string `yaml:"workdir,omitempty"`
 	// Env adds (or overrides) environment variables for this step.

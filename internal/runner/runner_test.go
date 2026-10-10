@@ -2,6 +2,7 @@ package runner
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -238,6 +239,93 @@ func TestGroupLabelsOutput(t *testing.T) {
 	}
 	if strings.Contains(out, "solo | plain") {
 		t.Errorf("ungrouped output must not be labeled:\n%s", out)
+	}
+}
+
+func TestCacheHitSkipsSecondRun(t *testing.T) {
+	root := scratchRepo(t)
+	addTracked(t, root, "a.go", "package x\n")
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{{Name: "count", Run: "echo x >> count.txt", Cache: true, CacheInputs: []string{"*.go"}}}
+	opts := Options{RootDir: root, Hook: "pre-push"}
+	if _, err := Run(steps, r, &sb, opts); err != nil {
+		t.Fatal(err)
+	}
+	results, err := Run(steps, r, &sb, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != render.Cached {
+		t.Fatalf("expected 1 cached result, got %+v", results)
+	}
+	data, _ := os.ReadFile(filepath.Join(root, "count.txt"))
+	if got := strings.Count(string(data), "x"); got != 1 {
+		t.Errorf("step executed %d times, want 1", got)
+	}
+}
+
+func TestCacheMissOnChange(t *testing.T) {
+	root := scratchRepo(t)
+	addTracked(t, root, "a.go", "package x\n")
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{{Name: "vet", Run: "echo ok", Cache: true, CacheInputs: []string{"*.go"}}}
+	opts := Options{RootDir: root, Hook: "pre-push"}
+	if _, err := Run(steps, r, &sb, opts); err != nil {
+		t.Fatal(err)
+	}
+	addTracked(t, root, "a.go", "package y\n")
+	results, err := Run(steps, r, &sb, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != render.Pass {
+		t.Fatalf("content change must invalidate, got %+v", results)
+	}
+}
+
+func TestCacheNeverStoresFailure(t *testing.T) {
+	root := scratchRepo(t)
+	addTracked(t, root, "a.go", "package x\n")
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{{Name: "bad", Run: "echo x >> n.txt; exit 1", Cache: true, CacheInputs: []string{"*.go"}}}
+	opts := Options{RootDir: root, Hook: "pre-push"}
+	for i := 0; i < 2; i++ {
+		if _, err := Run(steps, r, &sb, opts); err == nil {
+			t.Fatal("expected failure")
+		}
+	}
+	data, _ := os.ReadFile(filepath.Join(root, "n.txt"))
+	if got := strings.Count(string(data), "x"); got != 2 {
+		t.Errorf("failing step executed %d times, want 2 (never cached)", got)
+	}
+}
+
+func TestCacheWithoutInputsRunsNormally(t *testing.T) {
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{{Name: "plain", Run: "echo hi", Cache: true}}
+	for i := 0; i < 2; i++ {
+		results, err := Run(steps, r, &sb, Options{RootDir: t.TempDir(), Hook: "pre-push"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if results[0].Status != render.Pass {
+			t.Fatalf("uncacheable step must run, got %+v", results)
+		}
+	}
+}
+
+// addTracked writes a file and stages it so git ls-files sees it.
+func addTracked(t *testing.T, root, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", root, "add", name).CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v %s", err, out)
 	}
 }
 

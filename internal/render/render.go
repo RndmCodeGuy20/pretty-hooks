@@ -22,6 +22,7 @@ const (
 	Pass Status = iota
 	Fail
 	Skipped
+	Cached
 )
 
 // Result is the recorded outcome of one step.
@@ -117,9 +118,14 @@ func (r *Renderer) StepSkipped(name, reason string) {
 	r.println(r.skip.Render(fmt.Sprintf("⊘ %s - skipped (%s)", name, reason)))
 }
 
+// StepCached notes a cache hit.
+func (r *Renderer) StepCached(name string) {
+	r.println(r.ok.Render(fmt.Sprintf("✓ %s - cached (inputs unchanged)", name)))
+}
+
 // Summary prints the final board, including failure tails.
 func (r *Renderer) Summary(results []Result) {
-	pass, fail, skip := 0, 0, 0
+	pass, fail, skip, cached := 0, 0, 0, 0
 	for _, res := range results {
 		switch res.Status {
 		case Pass:
@@ -128,10 +134,12 @@ func (r *Renderer) Summary(results []Result) {
 			fail++
 		case Skipped:
 			skip++
+		case Cached:
+			cached++
 		}
 	}
 	r.println("")
-	line := fmt.Sprintf("done: %d passed, %d failed, %d skipped", pass, fail, skip)
+	line := fmt.Sprintf("done: %d passed, %d failed, %d cached, %d skipped", pass, fail, cached, skip)
 	if fail > 0 {
 		r.println(r.fail.Render(line))
 		for _, res := range results {
