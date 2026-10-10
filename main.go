@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/config"
+	"github.com/RndmCodeGuy20/pretty-hooks/internal/doctor"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/initcmd"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/render"
 	"github.com/RndmCodeGuy20/pretty-hooks/internal/runner"
@@ -38,6 +39,8 @@ func dispatch(args []string, out *os.File) int {
 		return cmdInit(args[1:], out)
 	case "run":
 		return cmdRun(args[1:], out)
+	case "doctor":
+		return cmdDoctor(args[1:], out)
 	case "version", "--version", "-v":
 		fmt.Fprintln(out, toolName, version)
 		return 0
@@ -58,6 +61,7 @@ commands:
   init [--preset go|node|minimal] [--force]   scaffold config + install git shims
   run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache]
                                               execute a hook's steps (fail-fast)
+  doctor [--config PATH]                      check setup (shims, binaries, CI pins)
   version                                     print version
 
 env:
@@ -85,6 +89,65 @@ func cmdInit(args []string, out *os.File) int {
 }
 
 // repeatable --skip NAME flag.
+
+func cmdDoctor(args []string, out *os.File) int {
+	cfgPath := ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--config" && i+1 < len(args):
+			i++
+			cfgPath = args[i]
+		case strings.HasPrefix(a, "--config="):
+			cfgPath = strings.TrimPrefix(a, "--config=")
+		case a == "--help" || a == "-h":
+			fmt.Fprintln(out, "usage: pretty-hooks doctor [--config PATH]")
+			return 0
+		default:
+			fmt.Fprintf(out, "unknown argument %q\n", a)
+			return 2
+		}
+	}
+	r := render.New(out)
+	if cfgPath == "" {
+		cwd, _ := os.Getwd()
+		var err error
+		cfgPath, err = config.Find(cwd)
+		if err != nil {
+			r.Error(err.Error())
+			return 1
+		}
+	}
+	root := runner.RepoRoot("")
+	if root == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			root = cwd
+		}
+	}
+	results, err := doctor.Run(root, cfgPath)
+	if err != nil {
+		r.Error(err.Error())
+		return 1
+	}
+	failed := false
+	for _, res := range results {
+		var mark string
+		switch res.Level {
+		case doctor.OK:
+			mark = "ok"
+		case doctor.Warn:
+			mark = "warn"
+		default:
+			mark = "FAIL"
+			failed = true
+		}
+		r.Info(fmt.Sprintf("%-4s %-16s %s", mark, res.Name, res.Detail))
+	}
+	if failed {
+		return 1
+	}
+	return 0
+}
 
 func cmdRun(args []string, out *os.File) int {
 	// Manual parsing (instead of flag.FlagSet) so flags may appear
