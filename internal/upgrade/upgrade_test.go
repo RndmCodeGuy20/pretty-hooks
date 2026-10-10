@@ -31,7 +31,7 @@ func TestAssetName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "pretty-hooks_v0.1.0_Darwin_arm64.tar.gz" {
+	if got != "pretty-hooks_v0.1.0_darwin_arm64.tar.gz" {
 		t.Errorf("got %q", got)
 	}
 	if _, err := assetName("v0.1.0", "windows", "amd64"); err == nil {
@@ -39,5 +39,24 @@ func TestAssetName(t *testing.T) {
 	}
 	if _, err := assetName("v0.1.0", runtime.GOOS, runtime.GOARCH); err != nil {
 		t.Errorf("current platform must map: %v", err)
+	}
+}
+
+func TestAssetNamesCoverBothConventions(t *testing.T) {
+	names, err := assetNames("v0.2.0", "darwin", "arm64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"pretty-hooks_v0.2.0_darwin_arm64.tar.gz",
+		"pretty-hooks_0.2.0_darwin_arm64.tar.gz",
+	}
+	if len(names) != len(want) {
+		t.Fatalf("got %v", names)
+	}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Errorf("got %v, want %v", names, want)
+		}
 	}
 }

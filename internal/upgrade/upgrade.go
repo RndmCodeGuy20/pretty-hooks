@@ -46,18 +46,20 @@ func Upgrade(current string) (string, error) {
 	if compareVersions(current, rel.TagName) >= 0 {
 		return fmt.Sprintf("already current (%s)", current), nil
 	}
-	name, err := assetName(rel.TagName, runtime.GOOS, runtime.GOARCH)
+	url := ""
+	names, err := assetNames(rel.TagName, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return "", err
 	}
-	url := ""
-	for _, a := range rel.Assets {
-		if a.Name == name {
-			url = a.URL
+	for _, name := range names {
+		for _, a := range rel.Assets {
+			if a.Name == name {
+				url = a.URL
+			}
 		}
 	}
 	if url == "" {
-		return "", fmt.Errorf("release %s has no asset %q", rel.TagName, name)
+		return "", fmt.Errorf("release %s has no matching asset", rel.TagName)
 	}
 	exe, err := executable()
 	if err != nil {
@@ -89,18 +91,27 @@ func latestRelease() (*release, error) {
 	return &rel, nil
 }
 
+// assetNames maps a tag and platform to candidate archive names.
+// Goreleaser strips the leading v (pretty-hooks_0.2.0_...), while older
+// hand-built releases kept it (pretty-hooks_v0.1.0_...). Both are tried.
+func assetNames(tag, goos, goarch string) ([]string, error) {
+	name, err := assetName(tag, goos, goarch)
+	if err != nil {
+		return nil, err
+	}
+	bare := strings.TrimPrefix(name, "pretty-hooks_v")
+	return []string{name, "pretty-hooks_" + bare}, nil
+}
+
 // assetName maps a tag and platform to the goreleaser archive name.
+// Goreleaser renders Os in lowercase (darwin, linux).
 func assetName(tag, goos, goarch string) (string, error) {
-	var osName string
 	switch goos {
-	case "darwin":
-		osName = "Darwin"
-	case "linux":
-		osName = "Linux"
+	case "darwin", "linux":
+		return fmt.Sprintf("pretty-hooks_%s_%s_%s.tar.gz", tag, goos, goarch), nil
 	default:
 		return "", fmt.Errorf("unsupported OS %q", goos)
 	}
-	return fmt.Sprintf("pretty-hooks_%s_%s_%s.tar.gz", tag, osName, goarch), nil
 }
 
 // compareVersions compares dotted versions with optional leading v.
