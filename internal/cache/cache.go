@@ -14,7 +14,6 @@ import (
 	"time"
 )
 
-// entry is one stored result.
 type entry struct {
 	Hash string `json:"hash"`
 	At   string `json:"at"`

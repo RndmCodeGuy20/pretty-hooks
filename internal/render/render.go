@@ -75,7 +75,6 @@ func New(out io.Writer) *Renderer {
 	return r
 }
 
-// restyle rebuilds every style from the current renderer profile.
 func (r *Renderer) restyle() {
 	r.header = r.lr.NewStyle().Bold(true)
 	r.step = r.lr.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
@@ -110,12 +109,10 @@ const ciBufferCap = 200
 // fileLine matches "path/file.ext:LINE: message" for annotation emission.
 var fileLine = regexp.MustCompile(`^([^:\s]+\.(go|js|ts|tsx|jsx|py|rb|java|tf)):(\d+):?\d*:?\s*(.*)$`)
 
-// Header opens a hook run.
 func (r *Renderer) Header(tool, hook string, n int) {
 	r.println(r.header.Render(fmt.Sprintf("%s · %s (%d steps)", tool, hook, n)))
 }
 
-// StepBegin announces a step.
 func (r *Renderer) StepBegin(i, total int, name, cmd string) {
 	if r.ci {
 		r.buf = nil
@@ -125,7 +122,6 @@ func (r *Renderer) StepBegin(i, total int, name, cmd string) {
 	r.println(r.step.Render(fmt.Sprintf("› [%d/%d] %s", i, total, name)) + r.dim.Render(fmt.Sprintf("  $ %s", cmd)))
 }
 
-// StepLine streams one captured output line, dimmed and indented.
 func (r *Renderer) StepLine(line string) {
 	r.println(r.dim.Render("    " + line))
 	if r.ci && len(r.buf) < ciBufferCap {
@@ -133,7 +129,6 @@ func (r *Renderer) StepLine(line string) {
 	}
 }
 
-// StepOK closes a passing step.
 func (r *Renderer) StepOK(name string, d time.Duration) {
 	if r.ci {
 		r.buf = nil
@@ -142,7 +137,6 @@ func (r *Renderer) StepOK(name string, d time.Duration) {
 	r.println(r.ok.Render(fmt.Sprintf("✓ %s (%s)", name, d.Round(100*time.Millisecond))))
 }
 
-// StepFail closes a failing step.
 func (r *Renderer) StepFail(name, reason string, d time.Duration) {
 	if r.ci {
 		for _, line := range r.buf {
@@ -162,7 +156,6 @@ func (r *Renderer) StepSkipped(name, reason string) {
 	r.println(r.skip.Render(fmt.Sprintf("⊘ %s - skipped (%s)", name, reason)))
 }
 
-// StepCached notes a cache hit.
 func (r *Renderer) StepCached(name string) {
 	r.println(r.ok.Render(fmt.Sprintf("✓ %s - cached (inputs unchanged)", name)))
 }

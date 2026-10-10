@@ -69,7 +69,6 @@ func Upgrade(current string) (string, error) {
 	return fmt.Sprintf("upgraded %s to %s", current, rel.TagName), nil
 }
 
-// latestRelease queries the GitHub releases API.
 func latestRelease() (*release, error) {
 	client := &http.Client{Timeout: httpTimeout}
 	resp, err := client.Get(apiLatest)
@@ -180,7 +179,6 @@ func installFromURL(url, exe string) error {
 	return nil
 }
 
-// download fetches url into dest.
 func download(url, dest string) error {
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Get(url)
@@ -200,7 +198,6 @@ func download(url, dest string) error {
 	return err
 }
 
-// extractBinary unpacks the archive and returns the pretty-hooks path.
 func extractBinary(archive, dir string) (string, error) {
 	f, err := os.Open(archive)
 	if err != nil {

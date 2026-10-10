@@ -2,8 +2,11 @@
 //
 // Usage:
 //
-//	pretty-hooks init [--preset go|node|minimal] [--force]
-//	pretty-hooks run <hook> [--config PATH] [--skip NAME]...
+//	pretty-hooks init [--preset go|node|hygiene|minimal] [--force]
+//	pretty-hooks run <hook> [hook-args...] [--config PATH] [--skip NAME]... [--fix] [--no-cache] [--ci]
+//	pretty-hooks doctor [--config PATH]
+//	pretty-hooks stats [--hook NAME]
+//	pretty-hooks upgrade
 //	pretty-hooks version
 package main
 
@@ -96,7 +99,6 @@ func cmdInit(args []string, out *os.File) int {
 	return 0
 }
 
-// cmdStats prints step timing history.
 func cmdStats(args []string, out *os.File) int {
 	hook := ""
 	for i := 0; i < len(args); i++ {
@@ -126,7 +128,6 @@ func cmdStats(args []string, out *os.File) int {
 	return 0
 }
 
-// cmdUpgrade updates the binary to the latest GitHub release.
 func cmdUpgrade(out *os.File) int {
 	r := render.New(out)
 	msg, err := upgrade.Upgrade(version)

@@ -66,7 +66,6 @@ func Failed(results []Result) bool {
 	return false
 }
 
-// checkShims verifies a managed shim exists for every configured hook.
 func checkShims(root string, cfg *config.File) Result {
 	var missing []string
 	for hook := range cfg.Hooks {
@@ -138,7 +137,6 @@ func checkGolangciPin(root string, cfg *config.File) (Result, bool) {
 	return Result{"lint-pin", OK, fmt.Sprintf("CI pin matches local (v%s)", local)}, true
 }
 
-// workflowLintPins collects golangci-lint-action versions from workflows.
 func workflowLintPins(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -178,7 +176,6 @@ func workflowLintPins(dir string) []string {
 	return pins
 }
 
-// golangciMajor returns the local binary's major version ("1", "2").
 func golangciMajor() (string, error) {
 	out, err := exec.Command("golangci-lint", "version").CombinedOutput()
 	if err != nil {

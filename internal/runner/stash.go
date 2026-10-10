@@ -26,7 +26,6 @@ func stashPushIfDirty(root string) (bool, error) {
 	return true, nil
 }
 
-// hasUnstagedChanges reports unstaged modifications to tracked files.
 func hasUnstagedChanges(root string) (bool, error) {
 	cmd := exec.Command("git", "status", "--porcelain=v1", "--untracked-files=no")
 	cmd.Dir = root

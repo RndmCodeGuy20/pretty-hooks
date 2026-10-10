@@ -131,7 +131,6 @@ func runGroup(group []config.Step, name string, offset, total int, opts Options,
 	return results, firstErr
 }
 
-// runOne executes a single step (skip, filter, exec, fix) and reports it.
 func runOne(s config.Step, i, total int, opts Options, r *render.Renderer, emit func(string)) (render.Result, error) {
 	if opts.Skip[s.Name] {
 		r.StepSkipped(s.Name, "--skip")
