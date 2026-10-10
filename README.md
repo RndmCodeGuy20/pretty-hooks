@@ -51,6 +51,19 @@ Rules:
 - `{staged_files}` expands to the quoted staged file list.
 - Output uses color on a terminal. Output is plain text in pipes and CI systems.
 
+## Parallel Groups
+
+Steps with the same `group` run at the same time:
+
+```yaml
+- { name: lint, run: npm run lint, group: fast }
+- { name: vet, run: go vet ./..., group: fast }
+- { name: test, run: go test ./... }
+```
+
+Groups run in sequence. A failed group stops the run.
+Steps in a group all run, and each line of output carries the step name.
+
 ## Repair Failures
 
 A step can declare a `fix` command:
