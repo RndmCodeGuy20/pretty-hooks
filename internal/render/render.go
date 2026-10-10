@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -33,7 +34,9 @@ type Result struct {
 }
 
 // Renderer writes styled (or plain) progress output.
+// It is safe for concurrent use; each line prints atomically.
 type Renderer struct {
+	mu    sync.Mutex
 	out   io.Writer
 	color bool
 
@@ -79,6 +82,8 @@ func New(out io.Writer) *Renderer {
 func (r *Renderer) Colored() bool { return r.color }
 
 func (r *Renderer) println(s string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	fmt.Fprintln(r.out, s)
 }
 
