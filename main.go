@@ -56,7 +56,7 @@ func usage(out *os.File) {
 
 commands:
   init [--preset go|node|minimal] [--force]   scaffold config + install git shims
-  run <hook> [--config PATH] [--skip NAME]... [--fix]
+  run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache]
                                               execute a hook's steps (fail-fast)
   version                                     print version
 
@@ -92,6 +92,7 @@ func cmdRun(args []string, out *os.File) int {
 	var skips []string
 	cfgPath := ""
 	fixFlag := false
+	noCache := false
 	var positional []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -108,8 +109,10 @@ func cmdRun(args []string, out *os.File) int {
 			cfgPath = strings.TrimPrefix(a, "--config=")
 		case a == "--fix":
 			fixFlag = true
+		case a == "--no-cache":
+			noCache = true
 		case a == "--help" || a == "-h":
-			fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix]")
+			fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache]")
 			return 0
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintf(out, "unknown flag %q\n", a)
@@ -119,7 +122,7 @@ func cmdRun(args []string, out *os.File) int {
 		}
 	}
 	if len(positional) != 1 {
-		fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix]")
+		fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache]")
 		return 2
 	}
 	hook := positional[0]
@@ -173,12 +176,19 @@ func cmdRun(args []string, out *os.File) int {
 	}
 
 	r.Header(toolName, hook, len(steps))
+	for _, s := range steps {
+		if s.Cache && len(s.CacheInputs) == 0 && len(s.OnlyIfChanged) == 0 {
+			r.Warn(fmt.Sprintf("step %q sets cache without inputs; add cache_inputs or only_if_changed", s.Name))
+		}
+	}
 	results, runErr := runner.Run(steps, r, out, runner.Options{
 		Skip:          skip,
 		Staged:        staged,
 		FilterChanged: filterChanged,
 		Fix:           fixFlag || os.Getenv("PH_FIX") == "1",
 		Stash:         stash,
+		Hook:          hook,
+		NoCache:       noCache,
 		RootDir:       root,
 	})
 	r.Summary(results)

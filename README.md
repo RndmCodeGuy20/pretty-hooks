@@ -95,6 +95,22 @@ hooks:
 The tool hides unstaged changes while steps run, then restores them.
 It restores them also when a step fails. Untracked files stay in place.
 
+## Skip Unchanged Steps
+
+A step with `cache` skips when its inputs did not change since the last
+passing run:
+
+```yaml
+- name: vet
+  run: go vet ./...
+  cache: true
+  cache_inputs: ["*.go"]
+```
+
+Inputs default to `only_if_changed`. Entries live under `.git/ph-cache`
+and never get committed. Failures never cache. `--no-cache` bypasses
+reads and writes.
+
 ## Commands
 
 - `pretty-hooks run pre-push` runs the steps for a hook.
