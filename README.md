@@ -11,6 +11,16 @@ Install the tool:
 go install github.com/RndmCodeGuy20/pretty-hooks@latest
 ```
 
+Without a Go toolchain, download the archive for your system from the
+releases page. Archives follow this pattern:
+
+```text
+pretty-hooks_<version>_<os>_<arch>.tar.gz
+```
+
+Example: `pretty-hooks_0.2.1_darwin_arm64.tar.gz`.
+Each archive holds both the `pretty-hooks` and the `ph` binary.
+
 Optional: add a short name:
 
 ```sh
