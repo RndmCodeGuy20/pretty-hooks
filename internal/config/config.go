@@ -20,6 +20,9 @@ const (
 type Step struct {
 	Name string `yaml:"name"`
 	Run  string `yaml:"run"`
+	// Fix repairs failure causes (formatters with --write). Runs once on
+	// failure when --fix is passed, then the step runs one final time.
+	Fix string `yaml:"fix,omitempty"`
 	// Workdir is resolved relative to the repository root. Empty means repo root.
 	Workdir string `yaml:"workdir,omitempty"`
 	// Env adds (or overrides) environment variables for this step.

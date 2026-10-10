@@ -28,6 +28,9 @@ type Options struct {
 	// FilterChanged enables only_if_changed filtering (pre-commit).
 	// When false, all steps run regardless of OnlyIfChanged (pre-push).
 	FilterChanged bool
+	// Fix runs each failing step's fix command once, re-stages repaired
+	// files, and runs the step one final time.
+	Fix bool
 	// RootDir is the working directory default (repo root). Empty means cwd.
 	RootDir string
 }
@@ -61,8 +64,14 @@ func Run(steps []config.Step, r *render.Renderer, out io.Writer, opts Options) (
 		start := time.Now()
 		tail, code, err := execStep(s, opts.RootDir, opts.Staged, func(line string) { r.StepLine(line) })
 		dur := time.Since(start)
+		if err != nil && opts.Fix && s.Fix != "" {
+			tail, code, dur, err = attemptFix(s, i, len(steps), opts, r)
+		}
 		if err != nil {
 			reason := fmt.Sprintf("exit %d", code)
+			if code < 0 {
+				reason = err.Error()
+			}
 			r.StepFail(s.Name, reason, dur)
 			results = append(results, render.Result{Name: s.Name, Status: render.Fail, Duration: dur, Reason: reason, Tail: tail})
 			return results, &FailedError{Step: s.Name, Code: code}
@@ -106,6 +115,57 @@ func execStep(s config.Step, root string, staged []string, emit func(string)) ([
 	return nil, 0, nil
 }
 
+// attemptFix runs the step's fix command, re-stages repaired files, and runs
+// the step exactly once more. It returns the final attempt's outcome.
+func attemptFix(s config.Step, i, total int, opts Options, r *render.Renderer) ([]string, int, time.Duration, error) {
+	emit := func(line string) { r.StepLine(line) }
+	r.Info(fmt.Sprintf("fix: %s", s.Fix))
+	fixStep := config.Step{Name: s.Name + " fix", Run: s.Fix, Workdir: s.Workdir, Env: s.Env}
+	_, _, _ = execStep(fixStep, opts.RootDir, opts.Staged, emit)
+	if err := restage(s, opts); err != nil {
+		return nil, -1, 0, fmt.Errorf("restage: %w", err)
+	}
+	r.StepBegin(i+1, total, s.Name, s.Run)
+	start := time.Now()
+	tail, code, err := execStep(s, opts.RootDir, opts.Staged, emit)
+	return tail, code, time.Since(start), err
+}
+
+// restage re-adds the step's files that still exist on disk.
+// It only ever adds; it never unstages.
+func restage(s config.Step, opts Options) error {
+	var existing []string
+	for _, f := range stagedList(s, opts.Staged) {
+		p := f
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(opts.RootDir, f)
+		}
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			existing = append(existing, f)
+		}
+	}
+	if len(existing) == 0 {
+		return nil
+	}
+	cmd := exec.Command("git", append([]string{"add", "--"}, existing...)...)
+	if opts.RootDir != "" {
+		cmd.Dir = opts.RootDir
+	}
+	return cmd.Run()
+}
+
+// stagedList returns the step's file list: staged files filtered by
+// OnlyIfChanged when set, else all staged files.
+func stagedList(s config.Step, staged []string) []string {
+	var kept []string
+	for _, f := range staged {
+		if len(s.OnlyIfChanged) == 0 || matchAny(s.OnlyIfChanged, []string{f}) {
+			kept = append(kept, f)
+		}
+	}
+	return kept
+}
+
 // expandPlaceholders replaces {staged_files} with the shell-quoted file list:
 // staged files filtered by OnlyIfChanged when set, else all staged files.
 func expandPlaceholders(cmd string, s config.Step, staged []string) string {
@@ -113,10 +173,8 @@ func expandPlaceholders(cmd string, s config.Step, staged []string) string {
 		return cmd
 	}
 	var kept []string
-	for _, f := range staged {
-		if len(s.OnlyIfChanged) == 0 || matchAny(s.OnlyIfChanged, []string{f}) {
-			kept = append(kept, shellQuote(f))
-		}
+	for _, f := range stagedList(s, staged) {
+		kept = append(kept, shellQuote(f))
 	}
 	return strings.ReplaceAll(cmd, "{staged_files}", strings.Join(kept, " "))
 }

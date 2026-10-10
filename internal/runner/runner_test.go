@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -104,6 +106,72 @@ func TestExpandPlaceholdersAbsent(t *testing.T) {
 	s := config.Step{Name: "x", Run: "go vet ./..."}
 	if got := expandPlaceholders(s.Run, s, []string{"a.go"}); got != s.Run {
 		t.Errorf("got %q, want unchanged", got)
+	}
+}
+
+func TestFixRepairsAndReruns(t *testing.T) {
+	dir := t.TempDir()
+	flag := filepath.Join(dir, "dirty.txt")
+	if err := os.WriteFile(flag, []byte("dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{{
+		Name: "fmt",
+		Run:  "test ! -f dirty.txt",
+		Fix:  "rm dirty.txt",
+	}}
+	results, err := Run(steps, r, &sb, Options{RootDir: dir, Fix: true})
+	if err != nil {
+		t.Fatalf("expected recovery, got %v", err)
+	}
+	if len(results) != 1 || results[0].Status != render.Pass {
+		t.Fatalf("got %+v", results)
+	}
+	if _, statErr := os.Stat(flag); !os.IsNotExist(statErr) {
+		t.Error("fix did not remove the file")
+	}
+}
+
+func TestFixRunsOnlyWithFlag(t *testing.T) {
+	dir := t.TempDir()
+	flag := filepath.Join(dir, "dirty.txt")
+	if err := os.WriteFile(flag, []byte("dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{{
+		Name: "fmt",
+		Run:  "test ! -f dirty.txt",
+		Fix:  "rm dirty.txt",
+	}}
+	if _, err := Run(steps, r, &sb, Options{RootDir: dir}); err == nil {
+		t.Fatal("expected failure without Fix option")
+	}
+	if _, statErr := os.Stat(flag); statErr != nil {
+		t.Error("fix ran without the flag")
+	}
+}
+
+func TestFixSingleRetry(t *testing.T) {
+	var sb strings.Builder
+	r := render.New(&sb)
+	steps := []config.Step{{
+		Name: "broken",
+		Run:  "exit 1",
+		Fix:  "exit 0",
+	}}
+	results, err := Run(steps, r, &sb, Options{RootDir: t.TempDir(), Fix: true})
+	if err == nil {
+		t.Fatal("expected failure after fix did not help")
+	}
+	if len(results) != 1 || results[0].Status != render.Fail {
+		t.Fatalf("got %+v", results)
+	}
+	if n := strings.Count(sb.String(), "[1/1] broken"); n != 2 {
+		t.Errorf("step ran %d times, want exactly 2 (try + one retry)", n)
 	}
 }
 
