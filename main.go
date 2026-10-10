@@ -59,7 +59,7 @@ func usage(out *os.File) {
 
 commands:
   init [--preset go|node|minimal] [--force]   scaffold config + install git shims
-  run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache]
+  run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache] [--ci]
                                               execute a hook's steps (fail-fast)
   doctor [--config PATH]                      check setup (shims, binaries, CI pins)
   version                                     print version
@@ -156,6 +156,7 @@ func cmdRun(args []string, out *os.File) int {
 	cfgPath := ""
 	fixFlag := false
 	noCache := false
+	ciFlag := false
 	var positional []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -174,8 +175,10 @@ func cmdRun(args []string, out *os.File) int {
 			fixFlag = true
 		case a == "--no-cache":
 			noCache = true
+		case a == "--ci":
+			ciFlag = true
 		case a == "--help" || a == "-h":
-			fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache]")
+			fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache] [--ci]")
 			return 0
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintf(out, "unknown flag %q\n", a)
@@ -185,11 +188,14 @@ func cmdRun(args []string, out *os.File) int {
 		}
 	}
 	if len(positional) != 1 {
-		fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache]")
+		fmt.Fprintln(out, "usage: pretty-hooks run <hook> [--config PATH] [--skip NAME]... [--fix] [--no-cache] [--ci]")
 		return 2
 	}
 	hook := positional[0]
 	r := render.New(out)
+	if ciFlag || os.Getenv("GITHUB_ACTIONS") == "true" {
+		r.EnableCI()
+	}
 
 	if os.Getenv("HOOKS_OFF") == "1" {
 		r.Warn("HOOKS_OFF=1, skipping " + hook)

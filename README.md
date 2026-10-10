@@ -111,6 +111,16 @@ Inputs default to `only_if_changed`. Entries live under `.git/ph-cache`
 and never get committed. Failures never cache. `--no-cache` bypasses
 reads and writes.
 
+## Use in CI
+
+The same config runs in CI systems. The tool detects `GITHUB_ACTIONS`
+and switches to plain log output with collapsible groups and file
+annotations. Force the mode with `--ci`:
+
+```yaml
+- run: pretty-hooks run pre-push --ci
+```
+
 ## Commands
 
 - `pretty-hooks run pre-push` runs the steps for a hook.
